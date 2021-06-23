@@ -157,6 +157,7 @@ STORED AS PARQUET;
 INSERT OVERWRITE TABLE netflix_trainwithouttest_parquet SELECT movied_id, netflix_train_parquet.user_id, rating, watch_date FROM netflix_train_parquet LEFT ANTI JOIN probe_parquet on netflix_train_parquet.user_id=probe_parquet.user_id and netflix_train_parquet.movied_id=probe_parquet.film_id
 
 
+## CREATE USER
 SELECT * FROM (SELECT MIN(netflix_trainwithouttest_parquet.user_id) AS id,
         CAST(COUNT(netflix_trainwithouttest_parquet.movied_id) AS INT) AS total_number_of_movie,
         CAST(AVG(netflix_trainwithouttest_parquet.rating) AS INT) AS average_rating,
@@ -165,10 +166,8 @@ SELECT * FROM (SELECT MIN(netflix_trainwithouttest_parquet.user_id) AS id,
         CAST(COUNT(netflix_trainwithouttest_parquet.movied_id)/(int_months_between(MAX(netflix_trainwithouttest_parquet.watch_date),MIN(netflix_trainwithouttest_parquet.watch_date))+1) AS INT) AS average_movie_monthly
         FROM netflix_trainwithouttest_parquet GROUP BY user_id) as res;
 		
-Export to table user_parquet3
+##Export to table user_parquet3 using HUE inteface
 
-
-## CREATE USER
 CREATE TABLE IF NOT EXISTS user_parquet
 (
 ID INT,
