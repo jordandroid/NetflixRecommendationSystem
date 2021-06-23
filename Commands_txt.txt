@@ -1,0 +1,187 @@
+WITH IMPALA :
+
+## LOAD TRAIN FILE 
+Put files in folder with same name
+CREATE TABLE IF NOT EXISTS netflix_train
+(
+MOVIED_ID INT,
+USER_ID INT,
+RATING FLOAT,
+WATCH_DATE TIMESTAMP
+)
+ROW FORMAT DELIMITED
+FIELDS TERMINATED BY ","
+LINES TERMINATED BY '\n'
+STORED AS TEXTFILE
+LOCATION '/user/cloudera/Project/Netflix' TBLPROPERTIES('skip.header.line.count'='1');
+
+Verify not empty : SELECT * from netflix_train_parquet LIMIT 10
+
+CREATE TABLE IF NOT EXISTS netflix_train_parquet
+(
+MOVIED_ID INT,
+USER_ID INT,
+RATING FLOAT,
+WATCH_DATE TIMESTAMP
+)
+ROW FORMAT DELIMITED
+FIELDS TERMINATED BY ","
+LINES TERMINATED BY '\n'
+STORED AS PARQUET;
+
+INSERT OVERWRITE TABLE netflix_train_parquet SELECT * FROM netflix_train
+
+Verify not empty : SELECT * from netflix_train_parquet LIMIT 10
+
+## LOAD IMDB
+CREATE TABLE IF NOT EXISTS imdb
+(
+TCONST STRING,
+TITLE_TYPE STRING,
+P_TITLE STRING,
+O_TITLE STRING,
+IS_ADULT INT,
+SYEAR INT,
+EYEAR INT,
+RUNTIMES_MIN INT,
+GENRES STRING
+)
+ROW FORMAT DELIMITED
+FIELDS TERMINATED BY "\t"
+LINES TERMINATED BY '\n'
+STORED AS TEXTFILE
+LOCATION '/user/cloudera/Project/IMDB' TBLPROPERTIES('skip.header.line.count'='1');
+ 
+
+CREATE TABLE IF NOT EXISTS imdb_parquet ( TCONST STRING, TITLE_TYPE STRING, P_TITLE STRING, O_TITLE STRING, IS_ADULT INT, SYEAR INT, EYEAR INT, RUNTIMES_MIN INT, GENRES STRING ) ROW FORMAT DELIMITED FIELDS TERMINATED BY "\t" LINES TERMINATED BY '\n' STORED AS PARQUET 
+
+
+INSERT OVERWRITE TABLE imdb_parquet SELECT * FROM imdb
+
+Verify not empty : SELECT * from imdb_parquet LIMIT 10
+
+## LOAD Netflix film names
+
+CREATE TABLE IF NOT EXISTS movie_names_netflix
+(
+ID INT,
+RYEAR INT,
+TITLE STRING
+)
+ROW FORMAT DELIMITED
+FIELDS TERMINATED BY ","
+LINES TERMINATED BY '\n'
+STORED AS TEXTFILE
+LOCATION '/user/cloudera/Project/Titles' TBLPROPERTIES('skip.header.line.count'='0');
+
+CREATE TABLE IF NOT EXISTS movie_names_netflix_parquet
+(
+ID INT,
+RYEAR INT,
+TITLE STRING
+)
+ROW FORMAT DELIMITED
+FIELDS TERMINATED BY ","
+LINES TERMINATED BY '\n'
+STORED AS PARQUET;
+
+INSERT OVERWRITE TABLE movie_names_netflix_parquet SELECT * FROM movie_names_netflix
+
+Verify not empty : SELECT * from movie_names_netflix_parquet LIMIT 10
+
+## LOAD PROBE 
+
+CREATE TABLE IF NOT EXISTS probe
+(
+ID INT,
+FILM_ID INT,
+USER_ID INT
+)
+ROW FORMAT DELIMITED
+FIELDS TERMINATED BY ","
+LINES TERMINATED BY '\n'
+STORED AS TEXTFILE
+LOCATION '/user/cloudera/Project/Probe' TBLPROPERTIES('skip.header.line.count'='1');
+
+CREATE TABLE IF NOT EXISTS probe_parquet
+(
+FILM_ID INT,
+USER_ID INT
+)
+ROW FORMAT DELIMITED
+FIELDS TERMINATED BY ","
+LINES TERMINATED BY '\n'
+STORED AS PARQUET;
+
+INSERT INTO probe_parquet(film_id, user_id) SELECT film_id,user_id FROM probe;
+
+
+Verify not empty : SELECT * from probe_parquet LIMIT 10
+
+We can drop original (not parquet) tables
+
+
+## JOIN IMDB and Netflix (around 9500movies over 17 700)
+SELECT movie_names_netflix_parquet.title, imdb_parquet.genres, count(p_title), max(id)
+FROM movie_names_netflix_parquet,imdb_parquet
+WHERE movie_names_netflix_parquet.title = imdb_parquet.p_title AND movie_names_netflix_parquet.ryear = imdb_parquet.syear
+GROUP BY title, imdb_parquet.genres;
+
+
+
+CREATE TABLE IF NOT EXISTS netflix_test_parquet
+(
+MOVIED_ID INT,
+USER_ID INT,
+RATING FLOAT,
+WATCH_DATE TIMESTAMP
+)
+ROW FORMAT DELIMITED
+FIELDS TERMINATED BY ","
+LINES TERMINATED BY '\n'
+STORED AS PARQUET;
+
+CREATE TABLE IF NOT EXISTS netflix_trainWithoutTest_parquet
+(
+MOVIED_ID INT,
+USER_ID INT,
+RATING FLOAT,
+WATCH_DATE TIMESTAMP
+)
+ROW FORMAT DELIMITED
+FIELDS TERMINATED BY ","
+LINES TERMINATED BY '\n'
+STORED AS PARQUET;
+
+		
+INSERT OVERWRITE TABLE netflix_trainwithouttest_parquet SELECT movied_id, netflix_train_parquet.user_id, rating, watch_date FROM netflix_train_parquet LEFT ANTI JOIN probe_parquet on netflix_train_parquet.user_id=probe_parquet.user_id and netflix_train_parquet.movied_id=probe_parquet.film_id
+
+
+SELECT * FROM (SELECT MIN(netflix_trainwithouttest_parquet.user_id) AS id,
+        CAST(COUNT(netflix_trainwithouttest_parquet.movied_id) AS INT) AS total_number_of_movie,
+        CAST(AVG(netflix_trainwithouttest_parquet.rating) AS INT) AS average_rating,
+        CAST(MAX(netflix_trainwithouttest_parquet.rating) AS INT) AS best_mark,
+        CAST(MIN(netflix_trainwithouttest_parquet.rating) AS INT) AS worst_mark,
+        CAST(COUNT(netflix_trainwithouttest_parquet.movied_id)/(int_months_between(MAX(netflix_trainwithouttest_parquet.watch_date),MIN(netflix_trainwithouttest_parquet.watch_date))+1) AS INT) AS average_movie_monthly
+        FROM netflix_trainwithouttest_parquet GROUP BY user_id) as res;
+		
+Export to table user_parquet3
+
+
+## CREATE USER
+CREATE TABLE IF NOT EXISTS user_parquet
+(
+ID INT,
+TOTAL_NUMBER_OF_MOVIE INT,
+AVERAGE_RATING INT,
+BEST_MARK INT,
+WORST_MARK INT,
+AVERAGE_MOVIE_MONTHLY INT
+)
+ROW FORMAT DELIMITED
+FIELDS TERMINATED BY ","
+LINES TERMINATED BY '\n'
+STORED AS PARQUET;
+
+
+INSERT OVERWRITE TABLE user_parquet SELECT * FROM user_parquet3 
